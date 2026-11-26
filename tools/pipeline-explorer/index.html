@@ -100,6 +100,18 @@
   .finding .flink{color:var(--acc2);font:11px var(--mono)}
   pre.compile{margin:8px 16px;padding:10px;background:#fff5f5;border:1px solid #f3c9c7;border-radius:6px;color:#b91c1c;font:11.5px/1.5 var(--mono);white-space:pre-wrap;overflow:auto}
   .hint{padding:10px 16px;color:var(--faint);font-size:11.5px}
+  .val .vhint{color:var(--faint);font-size:11px}
+  .gates{display:flex;flex-direction:column;border-bottom:1px solid var(--line)}
+  .grow{display:flex;align-items:center;gap:8px;padding:5px 16px;font-size:12px;border-top:1px solid var(--line)}
+  .grow:first-child{border-top:none}
+  .grow .gmark{flex:0 0 14px;text-align:center;font-weight:700}
+  .grow.ok .gmark{color:var(--ok)} .grow.warn .gmark{color:var(--warn)} .grow.err .gmark{color:var(--err)} .grow.info .gmark{color:var(--dim)}
+  .grow .gid{flex:0 0 58px;font:700 11px var(--mono);color:var(--acc)}
+  .grow .gq{flex:1;color:var(--ink)}
+  .grow.ok .gq{color:var(--dim)}
+  .grow .gcount{flex:0 0 auto;font:700 10px var(--mono);padding:1px 7px;border-radius:999px;background:rgba(220,38,38,.12);color:var(--err)}
+  .grow.err,.grow.warn{cursor:pointer}
+  .grow.err:hover,.grow.warn:hover{background:var(--panel2)}
 </style>
 </head>
 <body>
@@ -139,7 +151,8 @@
 </main>
 
 <section class="val" id="valEl">
-  <div class="vh"><span class="t">Validation</span></div>
+  <div class="vh"><span class="t">Validation</span><span class="vhint">the paper's gates, each a question the IR must answer</span></div>
+  <div id="gatesEl" class="gates"></div>
   <div id="findingsEl"></div>
 </section>
 
@@ -397,11 +410,47 @@ function renderJac(){
 }
 
 /* ---------- validation ---------- */
+/* the paper's gates, each phrased as the question the IR must answer */
+const GATES=[
+  {id:"G1",name:"Trace fan-out",q:"Does each obligation get its own step — not one step standing in for many?"},
+  {id:"G2",name:"Structure & coverage",q:"Is every required step a real, separate node that writes the output it promises, in order?"},
+  {id:"G3",name:"Human-in-the-loop",q:"Is human approval enforced by a code gate, not left to the model's judgment?"},
+  {id:"G4",name:"Typed dataflow & inputs",q:"Do the typed values line up — every carry read is produced & type-matched, external paths taken as inputs?"},
+  {id:"G5",name:"Standalone / faithful",q:"Does it still run with SKILL.md deleted — code & knowledge embodied, not pointing back at prose?"},
+  {id:"G6",name:"Environment & parallelism",q:"Are tools' environment needs declared up front, and independent steps parallelized?"},
+  {id:"COMPILE",name:"Compile oracle",q:"Does the IR lower to a module that type-checks (jac check)?"},
+];
+function gateFamily(g){ g=(g||"").toUpperCase();
+  if(g.includes("COMPILE")) return "COMPILE";
+  if(g.includes("TYPE")||g.startsWith("G4")) return "G4";
+  for(const k of ["G1","G2","G3","G5","G6"]){ if(g.startsWith(k)) return k; }
+  return "";
+}
+function renderGates(v){
+  const byFam={};
+  for(const f of (v.findings||[])){ const fam=gateFamily(f.gate); if(fam){ (byFam[fam]=byFam[fam]||[]).push(f); } }
+  if(v.compile && v.compile.ok===false && !(byFam["COMPILE"]||[]).length){ byFam["COMPILE"]=[{severity:"error"}]; }
+  $("#gatesEl").innerHTML=GATES.map(g=>{
+    const fs=byFam[g.id]||[];
+    const err=fs.some(f=>f.severity==="error");
+    const warn=fs.some(f=>f.severity==="warning");
+    const st=err?"err":(warn?"warn":"ok");          // info-only findings = still a pass (✓)
+    const mark=st==="err"?"✖":(st==="warn"?"⚠":"✓");
+    const showCount=(err||warn)&&fs.length;
+    return `<div class="grow ${st}" data-fam="${g.id}">
+      <span class="gmark">${mark}</span>
+      <span class="gid">${g.id}</span>
+      <span class="gq">${esc(g.q)}</span>
+      ${showCount?`<span class="gcount">${fs.length}</span>`:""}
+    </div>`;
+  }).join("");
+}
 function renderValidation(){
   const v=B.validation||{ok:true,findings:[],compile:{ok:true,errors:""}};
   const pill=$("#statusPill");
   pill.className="pill "+(v.ok?"ok":"err");
   pill.textContent=v.ok?"PASSED":"FAILED";
+  renderGates(v);
   let html=(v.findings||[]).map((f,i)=>`
     <div class="finding" data-i="${i}" ${f.rule?`data-rule="${f.rule}"`:""} ${f.node?`data-node="${f.node}"`:""}>
       <span class="sev ${f.severity}">${(f.severity||"").toUpperCase()}</span>
@@ -459,6 +508,11 @@ $("#graphNodesEl").addEventListener("click",e=>{const m=e.target.closest(".gnode
 $("#jacEl").addEventListener("click",e=>{const m=e.target.closest(".jline");if(m&&m.dataset.node)focus([],[m.dataset.node]);});
 $("#findingsEl").addEventListener("click",e=>{const m=e.target.closest(".finding");if(!m)return;focus(m.dataset.rule?[m.dataset.rule]:[],m.dataset.node?[m.dataset.node]:[]);});
 $("#detailEl").addEventListener("click",e=>{const m=e.target.closest(".trace");if(m)focus([m.dataset.rule],[]);});
+$("#gatesEl").addEventListener("click",e=>{const r=e.target.closest(".grow");if(!r||!r.dataset.fam)return;
+  const fam=r.dataset.fam, fs=(B.validation&&B.validation.findings)||[];
+  document.querySelectorAll(".finding").forEach(el=>el.classList.toggle("active", gateFamily((fs[+el.dataset.i]||{}).gate)===fam));
+  const first=document.querySelector(".finding.active"); if(first) first.scrollIntoView({block:"nearest"});
+});
 $("#clearBtn").addEventListener("click",()=>focus([],[]));
 window.addEventListener("resize",()=>requestAnimationFrame(drawEdges));
 
