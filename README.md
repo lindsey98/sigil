@@ -251,13 +251,15 @@ The paper reports three axes. Where each comes from, and what is in this repo:
   # …and --skill-mode no-skill for the baseline
   ```
 
-- **Skill adherence** — Certified-Mandate Compliance (CMC): the fraction of a
-  task's applicable mandates the run certifiably realized (a code node, or a
-  one-to-one typed slot, cites the mandate and fired in reference order; the rest
-  are judged). Defined in [`docs/compliance-to-100.md`](docs/compliance-to-100.md).
-  The CMC certifier + judge is bench-side and ships with the paper, **not** in this
-  repo; from here the raw material is the compiled graph's node trace
-  (`AGIR_PROGRESS=1 ./agent.jac …`) and the gates.
+- **Skill adherence** — the fraction of a task's applicable mandates the run
+  realized. The paper scores it with a GPT-5 judge over (task, the compiled
+  AG-IR / harness, the execution trace) against a reviewed reference mandate DAG
+  (paper Appendix D); an in-repo code-certified variant is sketched in
+  [`docs/compliance-to-100.md`](docs/compliance-to-100.md). **This scorer is not
+  publicly released** — only the compiler is (checked: the `sigilagent` org and
+  the arXiv page). From here the raw material is the AG-IR mandates (rules +
+  `traces_to`), the node trace (`AGIR_PROGRESS=1 ./agent.jac …`), and the gates;
+  scoring on top of them is yours to build.
 
 - **Token cost** — Sigil accounts tokens per run; `sigil library` and the
   Observatory (`sigil serve`) show them. SkillsBench's `reward` does not include
