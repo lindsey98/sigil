@@ -236,12 +236,23 @@ auto-loads `.env`) or `set -a; source .env; set +a` first. Precedence is shell e
 
 ## Reproducing the paper's numbers
 
-The paper reports three axes. Where each comes from, and what is in this repo:
+The paper reports three axes. Two of them you can run from this repo directly;
+the third needs an external harness. Where each comes from:
 
-- **Test pass rate** — the agent's output scored by each task's own verifier. That
-  harness is **[SkillsBench](https://github.com/benchflow-ai/skillsbench)** (Python
-  3.12, `uv`); it reports `reward` (1/0) per task, run **with** vs **without** the
-  skill:
+```bash
+# skill adherence + token cost, for one skill on one task (needs a model):
+jac run src/eval_metrics.jac -- examples/csv-clean/SKILL.md "clean messy.csv" out.json
+# test pass rate: see tools/skillsbench/ (the task verifiers live in SkillsBench)
+```
+
+- **Token cost** — exact: `eval_metrics.jac` sums the runtime's own per-call token
+  log (`observability/live.jsonl`). `sigil library` and the Observatory show it too.
+
+- **Test pass rate** — each task's own verifier. That harness is
+  **[SkillsBench](https://github.com/benchflow-ai/skillsbench)** (Python 3.12,
+  `uv`); it reports `reward` (1/0) per task, run **with** vs **without** the skill.
+  See [`tools/skillsbench/`](tools/skillsbench/) for the exact commands and a
+  direct-run template for scoring a compiled artifact:
 
   ```bash
   git clone https://github.com/benchflow-ai/skillsbench && cd skillsbench
@@ -257,13 +268,10 @@ The paper reports three axes. Where each comes from, and what is in this repo:
   (paper Appendix D); an in-repo code-certified variant is sketched in
   [`docs/compliance-to-100.md`](docs/compliance-to-100.md). **This scorer is not
   publicly released** — only the compiler is (checked: the `sigilagent` org and
-  the arXiv page). From here the raw material is the AG-IR mandates (rules +
-  `traces_to`), the node trace (`AGIR_PROGRESS=1 ./agent.jac …`), and the gates;
-  scoring on top of them is yours to build.
-
-- **Token cost** — Sigil accounts tokens per run; `sigil library` and the
-  Observatory (`sigil serve`) show them. SkillsBench's `reward` does not include
-  tokens.
+  the arXiv page). `eval_metrics.jac` ships an **approximation**: it judges each
+  MANDATORY obligation extracted from the SKILL.md against the run's report — close
+  in method, not identical (mandates from the skill's own text; the judge sees the
+  report, not the full node trace).
 
 SkillsBench runs a named `--agent` (oracle / claude-agent-acp / gemini / codex-acp)
 against a task and has no built-in hook for a compiled artifact, so its with-skill
@@ -362,8 +370,10 @@ src/
   sigil_workspace.jac    tool-belt: file tools, gated exec, SSRF-guarded web
   debug_pipeline.jac     step-by-step dumper for the back-end stages (see above)
   export_bundle.jac      compile a skill → bundle.json for the pipeline explorer
+  eval_metrics.jac       run a skill on a task → skill adherence + token cost
 web/                     the web console (one module per page)
 tools/pipeline-explorer/ self-contained visual explorer of the compile pipeline
+tools/skillsbench/       test-pass-rate via SkillsBench (commands + direct-run template)
 tools/sandbox/           containerized harness for running compiled agents
 .jac/data/               (runtime) the persistent graph
 ```
