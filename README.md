@@ -18,20 +18,24 @@
   </p>
 </div>
 
-In every agent harness today, a skill is a prompt. The model reads the
-instructions and you hope it follows them. A frontier model mostly does; a small
-model skips steps, ignores MUSTs, and forgets the verification you asked for.
+Most agent harnesses treat a skill as a prompt: the model reads your instructions
+and you *hope* it follows them. A frontier model mostly will. A small, cheap, or
+fully-local model skips steps, ignores the MUSTs, and quietly drops the
+verification you asked for.
 
-Sigil treats the skill as source code. You write the same plain-markdown
-`SKILL.md` you already write, and the compiler turns it into a typed program the
-model runs *inside*: mandatory steps become nodes the run must visit, in the
-skill's order. Prohibitions become constraints with no edge to traverse. Code
-snippets become runnable tool bodies. Verification steps become gates with typed
-verdicts. The model's judgment is confined to typed slots at exactly the points
-where the skill calls for judgment.
+Sigil **compiles** the skill instead of prompting it. You write the same
+plain-markdown `SKILL.md` you already write, and the compiler turns it into a
+typed program the model runs *inside*:
 
-That is why a compiled skill runs faithfully on a small, cheap, even fully-local
-model: the structure a weak model would skip is no longer skippable.
+- mandatory steps become graph **nodes** the run must visit, in the skill's order;
+- prohibitions become **constraints** with no edge to traverse;
+- code snippets become runnable **tool bodies**;
+- verification steps become **gates** with typed verdicts.
+
+The model's judgment is boxed into typed slots, only at the points where the skill
+actually calls for judgment. The structure a weak model would skip is no longer
+skippable — which is why a compiled skill runs faithfully on a small, cheap, even
+fully-local model.
 
 ```bash
 sigil compile ./SKILL.md -e agent.jac    # SKILL.md  →  one runnable agent
@@ -46,6 +50,13 @@ SIGIL_MODEL=ollama_chat/qwen3:8b ./agent.jac "..."   # any model can run it
 <td align="center"><sub><b>Compiling</b> is a live build view — every stage, with counts and timing.</sub></td>
 <td align="center"><sub><b>Running</b> a compiled skill is a terminal app — node-by-node, with its output.</sub></td>
 </tr></table>
+
+## Two ways in
+
+- **Use it** — install the release and drive the `sigil` CLI. See [Install](#install).
+- **Read / hack it** — clone and run the tree from source, with step-by-step
+  dumpers, breakpoints, and a visual pipeline explorer. See
+  [Run from source](#run-from-source--watch-every-stage).
 
 ## Install
 
@@ -99,6 +110,157 @@ them from `SIGIL_FRONTIER`, `SIGIL_SMALL` and `SIGIL_ROUTER`. An ejected runnabl
 picks its model from `SIGIL_MODEL`. Details:
 [`docs/reference/connections.md`](docs/reference/connections.md).
 
+## How the compiler works
+
+The pipeline splits where a traditional compiler does: a front-end that owns all
+the judgment, and a back-end that owns none.
+
+```mermaid
+flowchart LR
+    SKILL["SKILL.md<br/><i>plain-markdown instructions</i>"]
+    IR["AG-IR<br/><i>typed graph contract</i>"]
+    JAC["agent.jac<br/><i>runnable agent harness</i>"]
+    RUN["any model executes it<br/><i>small / local included</i>"]
+    SKILL -- "LIFT · AI front-end<br/>gated for faithfulness" --> IR
+    IR -- "LOWER · mechanical back-end<br/>zero judgment" --> JAC
+    JAC -- run --> RUN
+```
+
+The **AG-IR** in the middle is one typed graph read four ways: the step flowchart,
+the control-flow graph, the dataflow of typed carries, and the knowledge/tool
+residency map. Its primitives are closed, and each has exactly one lowering — that
+is what lets the back-end be deterministic.
+
+**LIFT** (the AI front-end) is anchored by the spec loop: a model extracts
+candidate rules, and a deterministic grounding check drops any rule whose quote is
+not verbatim in the skill, so a hallucinated rule can never survive. Coverage
+critics hunt for dropped obligations, and a code audit catches modality drift.
+Then the gates check the result — the SIGIL paper's validation checks G1–G6, then
+COMPILE, the compile oracle, which round-trips every candidate IR through the
+mechanical back-end and the `jac` type-checker. Repair comes first: mechanical
+autofixes, then scoped model repair, then faithful degradation, and whatever
+remains rides the result as typed findings. A compile fails when no runnable module
+exists, or when an error finding survives that repair budget, and `--strict`
+restores fail-on-any-finding for CI.
+
+Compiling interactively also offers to lint the skill first. Obligations the spec
+loop found underspecified or self-contradictory come back as findings, and your
+one do / maybe / don't answer both settles the obligation and writes the sentence
+that encodes it durably into the `SKILL.md`. Standalone:
+`sigil lint <SKILL.md> [--fix]`.
+
+Full walkthrough: [`src/compiler/README.md`](src/compiler/README.md) and
+[`docs/reference/skill-compilation.md`](docs/reference/skill-compilation.md).
+
+## Run from source — watch every stage
+
+Sigil runs straight from a checkout; `install.sh` only copies a release into
+`~/.sigil/app`. To read, debug or extend the compiler, install the *runtime and its
+deps* — **not Sigil as a package**. Use a dedicated env on **Python 3.12** (what
+jaclang `0.37.25` and SkillsBench both target):
+
+```bash
+conda create -n sigil python=3.12 && conda activate sigil
+pip install 'jaclang==0.37.25'   # the pinned jac runtime (jac.toml: jac-version)
+jac install                      # provision jac.toml deps (pyyaml, litellm, …)
+```
+
+Then drive the tree in place — `./sigil compile ./SKILL.md`, or
+`jac run src/main.jac -- …`.
+
+### Dump each back-end stage (no model)
+
+The LOWER back-end (AG-IR → validation → JAC) is deterministic — only `jaclang` +
+`pyyaml`. These print each stage's input and output on a shipped example
+(`examples/csv-clean`): the AG-IR text, its parsed structure, the gate findings,
+the lowered JAC, and the COMPILE verdict.
+
+```bash
+jac run src/debug_pipeline.jac    # AG-IR → load_agir → gates → transpile_ir → compile_gate
+python debug_pipeline.py          # same chain; imports the jac fns so PyCharm can debug it
+```
+
+**Breakpoints** — PyCharm has no Jac support, and you don't need it: set normal
+PyCharm breakpoints in `debug_pipeline.py` for the stage-by-stage values, or drop
+`breakpoint();` into any `.jac` (e.g. inside `transpile_ir`) and `jac run …` halts
+in pdb there. For `.jac` syntax/LSP, use VS Code's Jac extension.
+
+### Visualize one real skill
+
+`src/export_bundle.jac` compiles a skill and writes a `bundle.json`; its front-end
+(SKILL.md → rules → AG-IR) needs a connected model (see Environment below):
+
+```bash
+jac run src/export_bundle.jac -- examples/csv-clean/SKILL.md bundle.json
+open tools/pipeline-explorer/index.html      # then click: load bundle.json
+```
+
+The explorer (`tools/pipeline-explorer/index.html`) is self-contained and ships a
+synthetic demo, so it also opens with no model. Its components:
+
+1. **SKILL.md** — the source text; a rule's verbatim span highlights on selection.
+2. **Requirements** — the extracted contract: each rule's id, kind, modality, quote.
+3. **AG-IR** — the dependency graph; click a node for its `reads` / `writes` and the
+   requirement + source span it `traces_to`.
+4. **JAC** — the lowered code; a node's `can n_<id>` lines highlight with it.
+5. **Validation** — pass, or each failing gate explained (offending node /
+   requirement / carry) with the `jac check` error.
+
+Select anything in any column and the matching source span, requirement, graph
+node, JAC lines and findings all highlight together. Details:
+[`tools/pipeline-explorer/README.md`](tools/pipeline-explorer/README.md).
+
+### Environment
+
+The LIFT front-end needs a model; the back-end dumpers do not. Put keys and any
+relay/proxy (中转) base URL in a gitignored `.env` (copy `.env.example`). The
+`sigil` launcher does not auto-source it, so run from the repo root (litellm
+auto-loads `.env`) or `set -a; source .env; set +a` first. Precedence is shell env
+> `.env` > `jac.toml` defaults — any of these can just be exported in the shell:
+
+| variable | overrides |
+|---|---|
+| `OPENAI_API_KEY` / `OPENAI_API_BASE` | model key and relay base URL — then use `openai/<model>` names |
+| `SIGIL_MODEL` | the model an ejected `./agent.jac` runs on |
+| `SIGIL_FRONTIER` / `SIGIL_SMALL` / `SIGIL_ROUTER` | tier seeds for a fresh graph |
+| `SIGIL_JAC` / `SIGIL_JAC_CHECK` | which `jac` binary to use / skip the pinned-version check |
+| `AGIR_PROGRESS=1` | stream the node trace while a compiled skill runs |
+
+## Reproducing the paper's numbers
+
+The paper reports three axes. Where each comes from, and what is in this repo:
+
+- **Test pass rate** — the agent's output scored by each task's own verifier. That
+  harness is **[SkillsBench](https://github.com/benchflow-ai/skillsbench)** (Python
+  3.12, `uv`); it reports `reward` (1/0) per task, run **with** vs **without** the
+  skill:
+
+  ```bash
+  git clone https://github.com/benchflow-ai/skillsbench && cd skillsbench
+  uv tool install benchflow && uv sync --locked
+  bench eval run --tasks-dir tasks/<task> --agent <agent> --model <model> \
+    --skill-mode with-skill --skills-dir tasks/<task>/environment/skills/ --sandbox docker
+  # …and --skill-mode no-skill for the baseline
+  ```
+
+- **Skill adherence** — Certified-Mandate Compliance (CMC): the fraction of a
+  task's applicable mandates the run certifiably realized (a code node, or a
+  one-to-one typed slot, cites the mandate and fired in reference order; the rest
+  are judged). Defined in [`docs/compliance-to-100.md`](docs/compliance-to-100.md).
+  The CMC certifier + judge is bench-side and ships with the paper, **not** in this
+  repo; from here the raw material is the compiled graph's node trace
+  (`AGIR_PROGRESS=1 ./agent.jac …`) and the gates.
+
+- **Token cost** — Sigil accounts tokens per run; `sigil library` and the
+  Observatory (`sigil serve`) show them. SkillsBench's `reward` does not include
+  tokens.
+
+SkillsBench runs a named `--agent` (oracle / claude-agent-acp / gemini / codex-acp)
+against a task and has no built-in hook for a compiled artifact, so its with-skill
+arm gives a model the raw `SKILL.md`; wiring an ejected `./agent.jac` in as the
+agent is your own adapter. For the one-artifact direct-run method, see
+[`docs/skillsbench-compiler-bugs.md`](docs/skillsbench-compiler-bugs.md).
+
 ## Works with Claude Code — both directions
 
 Sigil plugs into the harness you already use, and needs no API key to do it.
@@ -122,92 +284,6 @@ gate, a tool-using session gets the workspace and the compile oracle as a comman
 (`sigil gate`) and iterates until it passes; the oracle stays the authority.
 
 Details: [`docs/reference/claude-code.md`](docs/reference/claude-code.md).
-
-## How the compiler works
-
-The pipeline splits where a traditional compiler does: a front-end that owns all
-the judgment, and a back-end that owns none.
-
-```mermaid
-flowchart LR
-    SKILL["SKILL.md<br/><i>plain-markdown instructions</i>"]
-    IR["AG-IR<br/><i>typed graph contract</i>"]
-    JAC["agent.jac<br/><i>runnable agent harness</i>"]
-    RUN["any model executes it<br/><i>small / local included</i>"]
-    SKILL -- "LIFT · AI front-end<br/>gated for faithfulness" --> IR
-    IR -- "LOWER · mechanical back-end<br/>zero judgment" --> JAC
-    JAC -- run --> RUN
-```
-
-The AG-IR in the middle is one typed graph read four ways: the step flowchart,
-the control-flow graph, the dataflow of typed carries, and the knowledge/tool
-residency map. Its primitives are closed, and each has exactly one lowering —
-that is what lets the back-end be deterministic.
-
-LIFT's anchor is the spec loop: a model extracts candidate rules, and a
-deterministic grounding check drops any rule whose quote is not verbatim in the
-skill, so a hallucinated rule can never survive. Coverage critics hunt for
-dropped obligations, and a code audit catches modality drift. Then the gates
-check the result — the SIGIL paper's validation checks G1–G6, then COMPILE, the
-compile oracle, which round-trips every candidate IR through the mechanical
-back-end and the `jac` type-checker. Repair comes first: mechanical autofixes,
-then scoped model repair, then faithful degradation, and whatever remains rides
-the result as typed findings. A compile fails when no runnable module exists, or
-when an error finding survives that repair budget, and `--strict` restores
-fail-on-any-finding for CI.
-
-Compiling interactively also offers to lint the skill first. Obligations the spec
-loop found underspecified or self-contradictory come back as findings, and your
-one do / maybe / don't answer both settles the obligation and writes the sentence
-that encodes it durably into the `SKILL.md`. Standalone:
-`sigil lint <SKILL.md> [--fix]`.
-
-Full walkthrough: [`src/compiler/README.md`](src/compiler/README.md) and
-[`docs/reference/skill-compilation.md`](docs/reference/skill-compilation.md).
-
-## Running from source — watch each stage
-
-Sigil runs straight from this checkout; `install.sh` only copies a release into
-`~/.sigil/app`. To develop, you install the *runtime and its deps* — not Sigil as
-a package — and run the tree in place:
-
-```bash
-pip install 'jaclang==0.37.25'   # the pinned jac runtime (see jac.toml: jac-version)
-jac install                      # provision deps from jac.toml (pyyaml, litellm, …)
-./sigil compile ./SKILL.md       # or drive the tree directly: jac run src/main.jac -- …
-```
-
-The LOWER back-end (AG-IR → validation → JAC) is deterministic and needs **no
-model** — only `jaclang` + `pyyaml`. Two helpers dump each stage's input and
-output on a shipped example (`examples/csv-clean`), nothing installed globally:
-
-```bash
-jac run src/debug_pipeline.jac    # AG-IR → load_agir → gates → transpile_ir → compile_gate
-python debug_pipeline.py          # the same chain, importing the jac fns from source
-```
-
-**Breakpoints** (PyCharm has no Jac support — and you don't need it). For the
-driver level — every stage's inputs and outputs — set ordinary PyCharm
-breakpoints in `debug_pipeline.py`: it is plain Python that imports the jac
-functions from source. To step *inside* the compiler's own `.jac` code, drop
-`breakpoint();` into any `.jac` (e.g. inside `transpile_ir`) and run `jac run …`
-in a terminal — it halts in pdb right there, no IDE language support required.
-(For `.jac` syntax/LSP, use VS Code's official Jac extension.)
-
-**Visualize it.** `tools/pipeline-explorer/index.html` is a self-contained page
-(just open it — no server): click a requirement and its verbatim `SKILL.md` span,
-its AG-IR node and the lowered JAC lines all highlight at once, with the
-validation verdict — and, on failure, *why* — explained. It ships synthetic demo
-data and accepts a real bundle via **load bundle.json**.
-
-```bash
-open tools/pipeline-explorer/index.html
-```
-
-The LIFT front-end (SKILL.md → requirements → AG-IR) needs a model. Put keys and
-any relay/proxy base URL in a gitignored `.env` (copy `.env.example`):
-`OPENAI_API_KEY` + `OPENAI_API_BASE`, then use model names like
-`openai/gpt-4o-mini`.
 
 ## Ejecting
 
@@ -274,7 +350,10 @@ src/
   chat_agent.jac         the conversational ReAct agent
   sigil_skill_tools.jac  every compiled skill as a gated tool on that agent
   sigil_workspace.jac    tool-belt: file tools, gated exec, SSRF-guarded web
+  debug_pipeline.jac     step-by-step dumper for the back-end stages (see above)
+  export_bundle.jac      compile a skill → bundle.json for the pipeline explorer
 web/                     the web console (one module per page)
+tools/pipeline-explorer/ self-contained visual explorer of the compile pipeline
 tools/sandbox/           containerized harness for running compiled agents
 .jac/data/               (runtime) the persistent graph
 ```
