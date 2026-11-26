@@ -151,7 +151,7 @@
 </main>
 
 <section class="val" id="valEl">
-  <div class="vh"><span class="t">Validation</span><span class="vhint">the paper's gates, each a question the IR must answer</span></div>
+  <div class="vh"><span class="t">Validation</span><span class="vhint">the paper's gates as questions — ✓ = no problems found (some gates apply only to certain skills)</span></div>
   <div id="gatesEl" class="gates"></div>
   <div id="findingsEl"></div>
 </section>
@@ -412,13 +412,13 @@ function renderJac(){
 /* ---------- validation ---------- */
 /* the paper's gates, each phrased as the question the IR must answer */
 const GATES=[
-  {id:"G1",name:"Trace fan-out",q:"Does each obligation get its own step — not one step standing in for many?"},
-  {id:"G2",name:"Structure & coverage",q:"Is every required step a real, separate node that writes the output it promises, in order?"},
-  {id:"G3",name:"Human-in-the-loop",q:"Is human approval enforced by a code gate, not left to the model's judgment?"},
-  {id:"G4",name:"Typed dataflow & inputs",q:"Do the typed values line up — every carry read is produced & type-matched, external paths taken as inputs?"},
-  {id:"G5",name:"Standalone / faithful",q:"Does it still run with SKILL.md deleted — code & knowledge embodied, not pointing back at prose?"},
-  {id:"G6",name:"Environment & parallelism",q:"Are tools' environment needs declared up front, and independent steps parallelized?"},
-  {id:"COMPILE",name:"Compile oracle",q:"Does the IR lower to a module that type-checks (jac check)?"},
+  {id:"G1",name:"Trace fan-out",q:"Does each obligation get its own step — not one step claiming many unrelated ones?"},
+  {id:"G2",name:"Structure & coverage",q:"Is every required step its own real node that produces what it promises, in the right order?"},
+  {id:"G3",name:"Human-in-the-loop",q:"If the skill waits on a human yes/no, does code act on it directly — not a model's interpretation? (No human step → passes.)"},
+  {id:"G4",name:"Typed dataflow & inputs",q:"Do the values between steps line up (each one actually produced, types matching), and external file paths come in as inputs?"},
+  {id:"G5",name:"Standalone",q:"Is everything baked into the compiled code (real tool bodies, real knowledge text) — so it runs with the SKILL.md deleted?"},
+  {id:"G6",name:"Environment & parallelism",q:"Are each tool's environment needs (packages, commands, paths, IO) declared up front, and independent steps parallelized?"},
+  {id:"COMPILE",name:"Compile oracle",q:"Does the IR lower to a runnable module that passes jac's type-check?"},
 ];
 function gateFamily(g){ g=(g||"").toUpperCase();
   if(g.includes("COMPILE")) return "COMPILE";
