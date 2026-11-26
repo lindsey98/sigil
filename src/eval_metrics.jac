@@ -61,7 +61,7 @@ def _sum_tokens(obs_path: str) -> dict[str, any] {
         for line in f {
             line = line.strip();
             if not line { continue; }
-            try { rec = json.loads(line); } except Exception as e { continue; }
+            try { rec = json.loads(line); } except Exception { continue; }
             agg["calls"] += 1;
             for k in ["prompt_tokens", "completion_tokens", "reasoning_tokens", "total_tokens"] {
                 agg[k] += int(rec.get(k, 0) or 0);
@@ -101,14 +101,14 @@ with entry {
             print("[3/4] running on the task …");
             run_model = os.getenv("SIGIL_MODEL", "") or os.getenv("SIGIL_SMALL", "ollama_chat/qwen3:32b");
             res = execute_module(module_path, task, run_model, name, wd);
-            report = str(res.get("report", ""));
+            run_report = str(res.get("report", ""));
             tokens = _sum_tokens(os.path.join(wd, OBS_LOG));
 
             print("[4/4] judging adherence over " + str(len(mandates)) + " obligations …");
             per = [];
             passed = 0;
             for m in mandates {
-                v = judge_mandate(m.quote, task, report);
+                v = judge_mandate(m.quote, task, run_report);
                 if v.realized { passed += 1; }
                 per.append({"id": m.id, "quote": m.quote, "realized": v.realized, "reason": v.reason});
             }
