@@ -102,7 +102,7 @@
   .hint{padding:10px 16px;color:var(--faint);font-size:11.5px}
   .val .vhint{color:var(--faint);font-size:11px}
   .gates{display:flex;flex-direction:column;border-bottom:1px solid var(--line)}
-  .grow{display:flex;align-items:center;gap:8px;padding:5px 16px;font-size:12px;border-top:1px solid var(--line)}
+  .grow{display:flex;align-items:center;gap:8px;padding:5px 16px;font-size:12px;border-top:1px solid var(--line);cursor:help}
   .grow:first-child{border-top:none}
   .grow .gmark{flex:0 0 14px;text-align:center;font-weight:700}
   .grow.ok .gmark{color:var(--ok)} .grow.warn .gmark{color:var(--warn)} .grow.err .gmark{color:var(--err)} .grow.info .gmark{color:var(--dim)}
@@ -412,13 +412,20 @@ function renderJac(){
 /* ---------- validation ---------- */
 /* the paper's gates, each phrased as the question the IR must answer */
 const GATES=[
-  {id:"G1",name:"Trace fan-out",q:"Does each obligation get its own step — not one step claiming many unrelated ones?"},
-  {id:"G2",name:"Structure & coverage",q:"Is every required step its own real node that produces what it promises, in the right order?"},
-  {id:"G3",name:"Human-in-the-loop",q:"If the skill waits on a human yes/no, does code act on it directly — not a model's interpretation? (No human step → passes.)"},
-  {id:"G4",name:"Typed dataflow & inputs",q:"Do the values between steps line up (each one actually produced, types matching), and external file paths come in as inputs?"},
-  {id:"G5",name:"Standalone",q:"Is everything baked into the compiled code (real tool bodies, real knowledge text) — so it runs with the SKILL.md deleted?"},
-  {id:"G6",name:"Environment & parallelism",q:"Are each tool's environment needs (packages, commands, paths, IO) declared up front, and independent steps parallelized?"},
-  {id:"COMPILE",name:"Compile oracle",q:"Does the IR lower to a runnable module that passes jac's type-check?"},
+  {id:"G1",name:"Trace fan-out",q:"Does each obligation get its own step — not one step claiming many unrelated ones?",
+   detail:"\"Step\" = an AG-IR node (it lowers to one JAC `can n_<id>` slot). G1 counts each node's traces_to and flags a node (or tool) that claims many unrelated obligations — the pathology where coverage is reported but nothing is actually performed. Each obligation should have its own realization."},
+  {id:"G2",name:"Structure & coverage",q:"Is every required step its own real node that produces what it promises, in the right order?",
+   detail:"Each required obligation must be its OWN AG-IR node, not folded into one monolithic \"do everything\" node. G2_ARTIFACT also checks that an output mandate has a node which actually writes the artifact; G2_OVERLOAD: one node → exactly one by-llm slot."},
+  {id:"G3",name:"Human-in-the-loop",q:"If the skill waits on a human yes/no, does code act on it directly — not a model's interpretation? (No human step → passes.)",
+   detail:"Only applies if the skill has a human-in-the-loop step. Then the human's answer must drive a code-owned BRANCH with explicit guards — not a model step that \"interprets\" it. (A real bug it caught: a route read the human's explicit \"NOT approved\" and proceeded as approved.) No human step → nothing to check → auto-pass."},
+  {id:"G4",name:"Typed dataflow & inputs",q:"Do the values between steps line up (each one actually produced, types matching), and external file paths come in as inputs?",
+   detail:"Typed dataflow unification: every carry a node READS must be WRITTEN by some node, with matching types (reader type = producer type). This is the gate the demo's failing case trips. G4_INPUT also requires external file locations to arrive as typed inputs, not invented by a tool."},
+  {id:"G5",name:"Standalone",q:"Is everything baked into the compiled code (real tool bodies, real knowledge text) — so it runs with the SKILL.md deleted?",
+   detail:"The \"delete SKILL.md\" test: run ONLY the compiled harness — does it still work? Every tool must have a real body or exact command (not an empty placeholder), and every knowledge item its actual content (not a pointer like \"see the skill\"). It guards Sigil's promise that the compiled skill needs no prompt at runtime."},
+  {id:"G6",name:"Environment & parallelism",q:"Are each tool's environment needs (packages, commands, paths, IO) declared up front, and independent steps parallelized?",
+   detail:"G6_ENV: a tool's environment needs — packages it imports, commands it shells out to, IO it reads, paths/files it opens — must be declared up front so the environment is provisioned at install time, not discovered at runtime. Needing a package is fine if it's declared. G6_PAR: independent steps are marked to run in parallel."},
+  {id:"COMPILE",name:"Compile oracle",q:"Does the IR lower to a runnable module that passes jac's type-check?",
+   detail:"The oracle: mechanically lower the IR to a JAC module and run jac's type-checker. It rejects an empty/unparseable lowering (no nodes) or any type error — the authority on whether the IR is actually runnable."},
 ];
 function gateFamily(g){ g=(g||"").toUpperCase();
   if(g.includes("COMPILE")) return "COMPILE";
@@ -437,7 +444,7 @@ function renderGates(v){
     const st=err?"err":(warn?"warn":"ok");          // info-only findings = still a pass (✓)
     const mark=st==="err"?"✖":(st==="warn"?"⚠":"✓");
     const showCount=(err||warn)&&fs.length;
-    return `<div class="grow ${st}" data-fam="${g.id}">
+    return `<div class="grow ${st}" data-fam="${g.id}" title="${esc(g.id+" — "+g.name+"\n\n"+g.detail).replace(/"/g,"&quot;")}">
       <span class="gmark">${mark}</span>
       <span class="gid">${g.id}</span>
       <span class="gq">${esc(g.q)}</span>
