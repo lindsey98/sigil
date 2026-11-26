@@ -165,6 +165,50 @@ that encodes it durably into the `SKILL.md`. Standalone:
 Full walkthrough: [`src/compiler/README.md`](src/compiler/README.md) and
 [`docs/reference/skill-compilation.md`](docs/reference/skill-compilation.md).
 
+## Running from source — watch each stage
+
+Sigil runs straight from this checkout; `install.sh` only copies a release into
+`~/.sigil/app`. To develop, you install the *runtime and its deps* — not Sigil as
+a package — and run the tree in place:
+
+```bash
+pip install 'jaclang==0.37.25'   # the pinned jac runtime (see jac.toml: jac-version)
+jac install                      # provision deps from jac.toml (pyyaml, litellm, …)
+./sigil compile ./SKILL.md       # or drive the tree directly: jac run src/main.jac -- …
+```
+
+The LOWER back-end (AG-IR → validation → JAC) is deterministic and needs **no
+model** — only `jaclang` + `pyyaml`. Two helpers dump each stage's input and
+output on a shipped example (`examples/csv-clean`), nothing installed globally:
+
+```bash
+jac run src/debug_pipeline.jac    # AG-IR → load_agir → gates → transpile_ir → compile_gate
+python debug_pipeline.py          # the same chain, importing the jac fns from source
+```
+
+**Breakpoints** (PyCharm has no Jac support — and you don't need it). For the
+driver level — every stage's inputs and outputs — set ordinary PyCharm
+breakpoints in `debug_pipeline.py`: it is plain Python that imports the jac
+functions from source. To step *inside* the compiler's own `.jac` code, drop
+`breakpoint();` into any `.jac` (e.g. inside `transpile_ir`) and run `jac run …`
+in a terminal — it halts in pdb right there, no IDE language support required.
+(For `.jac` syntax/LSP, use VS Code's official Jac extension.)
+
+**Visualize it.** `tools/pipeline-explorer/index.html` is a self-contained page
+(just open it — no server): click a requirement and its verbatim `SKILL.md` span,
+its AG-IR node and the lowered JAC lines all highlight at once, with the
+validation verdict — and, on failure, *why* — explained. It ships synthetic demo
+data and accepts a real bundle via **load bundle.json**.
+
+```bash
+open tools/pipeline-explorer/index.html
+```
+
+The LIFT front-end (SKILL.md → requirements → AG-IR) needs a model. Put keys and
+any relay/proxy base URL in a gitignored `.env` (copy `.env.example`):
+`OPENAI_API_KEY` + `OPENAI_API_BASE`, then use model names like
+`openai/gpt-4o-mini`.
+
 ## Ejecting
 
 A compiled skill leaves Sigil in two shapes.
