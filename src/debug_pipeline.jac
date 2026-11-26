@@ -7,8 +7,8 @@ What this shows (deterministic half — NO model, NO API key needed):
 
 It runs on an AG-IR that already exists on disk (examples/*/*.agir), i.e. the
 thing the AI front-end produced from a SKILL.md. The FRONT-END half
-(SKILL.md -> AG-IR) needs a model and is run separately via the CLI — see the
-notes the assistant gave you.
+(SKILL.md -> AG-IR) needs a model; to run the whole pipeline on a real skill and
+emit a visualizer bundle, use src/export_bundle.jac instead.
 
 Run it from the repo root:
 

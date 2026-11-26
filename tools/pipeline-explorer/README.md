@@ -76,6 +76,6 @@ Where the real data comes from in the codebase:
 - `validation` — the gate battery in `src/compiler/ai/gates.jac`
   (`compile_gate`, `gate_type_unification`, `gate_env_binding`, …). Deterministic.
 
-See also the step-by-step dumpers that print each back-end stage's I/O without a
-model: `src/debug_pipeline.jac` (run with `jac run`) and `debug_pipeline.py`
-(PyCharm-friendly, set breakpoints).
+See also `src/debug_pipeline.jac` — a step-by-step dumper that prints each
+back-end stage's I/O without a model (`jac run src/debug_pipeline.jac`); drop a
+`breakpoint();` in it or in the compiler's `.jac` to step through in pdb.

@@ -155,35 +155,43 @@ Full walkthrough: [`src/compiler/README.md`](src/compiler/README.md) and
 ## Run from source — watch every stage
 
 Sigil runs straight from a checkout; `install.sh` only copies a release into
-`~/.sigil/app`. To read, debug or extend the compiler, install the *runtime and its
-deps* — **not Sigil as a package**. Use a dedicated env on **Python 3.12** (what
-jaclang `0.37.25` and SkillsBench both target):
+`~/.sigil/app`. To read, debug or extend the compiler, install the *jac runtime* —
+**not Sigil as a package**. jac is a **self-contained native binary** (NOT a pip
+package — `pip install jaclang` is a different, older project), pinned to the
+version in `jac.toml`:
 
 ```bash
-conda create -n sigil python=3.12 && conda activate sigil
-pip install 'jaclang==0.37.25'   # the pinned jac runtime (jac.toml: jac-version)
+# the pinned jac runtime → ~/.local/bin/jac  (the repo's ./install.sh does this too)
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh \
+  | bash -s -- --version 0.37.25
+export PATH="$HOME/.local/bin:$PATH"
+jac --version                    # → jac 0.37.25
 jac install                      # provision jac.toml deps (pyyaml, litellm, …)
 ```
 
 Then drive the tree in place — `./sigil compile ./SKILL.md`, or
 `jac run src/main.jac -- …`.
 
+The jac binary bundles its own Python, so it needs no conda env. A conda env is
+only for the Python-side tooling (e.g. SkillsBench, run on **Python 3.12**):
+`conda create -n sigil python=3.12`.
+
 ### Dump each back-end stage (no model)
 
-The LOWER back-end (AG-IR → validation → JAC) is deterministic — only `jaclang` +
-`pyyaml`. These print each stage's input and output on a shipped example
-(`examples/csv-clean`): the AG-IR text, its parsed structure, the gate findings,
-the lowered JAC, and the COMPILE verdict.
+The LOWER back-end (AG-IR → validation → JAC) is deterministic and needs no model.
+This prints each stage's input and output on a shipped example (`examples/csv-clean`):
+the AG-IR text, its parsed structure, the gate findings, the lowered JAC, and the
+COMPILE verdict.
 
 ```bash
 jac run src/debug_pipeline.jac    # AG-IR → load_agir → gates → transpile_ir → compile_gate
-python debug_pipeline.py          # same chain; imports the jac fns so PyCharm can debug it
 ```
 
-**Breakpoints** — PyCharm has no Jac support, and you don't need it: set normal
-PyCharm breakpoints in `debug_pipeline.py` for the stage-by-stage values, or drop
-`breakpoint();` into any `.jac` (e.g. inside `transpile_ir`) and `jac run …` halts
-in pdb there. For `.jac` syntax/LSP, use VS Code's Jac extension.
+**Breakpoints.** jac is a standalone binary with no importable `jaclang`, so you
+debug with **pdb**, not an IDE's graphical debugger: drop `breakpoint();` into any
+`.jac` (e.g. inside `transpile_ir`) and run `jac run …` — it drops to pdb right
+there (works inside PyCharm's integrated terminal too). IDE breakpoints set on a
+`.jac` file do not bind; for `.jac` syntax/LSP use VS Code's Jac extension.
 
 ### Visualize one real skill
 
