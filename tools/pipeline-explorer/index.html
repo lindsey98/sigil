@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sigil Pipeline Explorer</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --panel:#ffffff; --panel2:#f1f3f6; --line:#e2e6ea;
+    --ink:#1b2027; --dim:#5b6675; --faint:#9aa4b2;
+    --acc:#7c3aed; --acc2:#0891b2; --hl:#f59e0b;
+    --ok:#16a34a; --warn:#b45309; --err:#dc2626;
+    --mono:"SFMono-Regular",ui-monospace,Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:var(--bg);color:var(--ink);font:13px/1.5 var(--sans);display:flex;flex-direction:column}
+  a{color:var(--acc2)}
+  /* header */
+  header{display:flex;align-items:center;gap:14px;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--panel);flex:0 0 auto}
+  header h1{font-size:14px;margin:0;font-weight:650;letter-spacing:.2px}
+  header h1 .dot{color:var(--acc)}
+  header .spacer{flex:1}
+  header select,header label.file{background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:5px 9px;font:12px var(--sans);cursor:pointer}
+  header .pill{padding:4px 11px;border-radius:999px;font-weight:650;font-size:12px}
+  .pill.ok{background:rgba(63,185,80,.15);color:var(--ok);border:1px solid rgba(63,185,80,.4)}
+  .pill.err{background:rgba(248,81,73,.15);color:var(--err);border:1px solid rgba(248,81,73,.4)}
+  button.clear{background:transparent;border:1px solid var(--line);color:var(--dim);border-radius:6px;padding:5px 9px;cursor:pointer;font:12px var(--sans)}
+  button.clear:hover{color:var(--ink);border-color:var(--faint)}
+  /* layout */
+  main{flex:1;display:grid;grid-template-columns:repeat(4,minmax(220px,1fr));gap:1px;background:var(--line);min-height:0;overflow:hidden}
+  .col{background:var(--panel);display:flex;flex-direction:column;min-height:0}
+  .col > .ch{padding:8px 12px;border-bottom:1px solid var(--line);font-size:11px;letter-spacing:.6px;text-transform:uppercase;color:var(--dim);display:flex;align-items:center;gap:8px;flex:0 0 auto}
+  .col > .ch .step{background:var(--acc);color:#fff;border-radius:4px;padding:0 6px;font-size:10px;font-weight:700}
+  .col > .ch .arrow{color:var(--faint)}
+  .body{overflow:auto;flex:1;min-height:0}
+  /* source */
+  pre.src{margin:0;padding:12px 14px;font:12.5px/1.65 var(--mono);white-space:pre-wrap;word-break:break-word}
+  mark.src{background:transparent;color:inherit;border-bottom:2px solid transparent;border-radius:2px;cursor:pointer;transition:background .1s}
+  mark.src:hover{background:rgba(139,92,246,.12)}
+  mark.src.active{background:rgba(245,196,81,.22);border-bottom-color:var(--hl)}
+  /* requirements */
+  .rule{padding:9px 12px;border-bottom:1px solid var(--line);cursor:pointer}
+  .rule:hover{background:var(--panel2)}
+  .rule.active{background:rgba(245,196,81,.10);box-shadow:inset 3px 0 0 var(--hl)}
+  .rhead{display:flex;align-items:center;gap:6px;margin-bottom:4px;flex-wrap:wrap}
+  .rid{font:700 11px var(--mono);color:var(--acc2)}
+  .chip{font-size:9.5px;font-weight:700;letter-spacing:.4px;padding:1px 6px;border-radius:999px;border:1px solid var(--line);color:var(--dim)}
+  .chip.mod-MANDATORY{color:#6d28d9;border-color:rgba(124,58,237,.45)}
+  .chip.mod-FORBIDDEN{color:#b91c1c;border-color:rgba(220,38,38,.45)}
+  .chip.mod-DISCRETIONARY{color:#0e7490;border-color:rgba(8,145,178,.45)}
+  .rquote{font:12px/1.5 var(--mono);color:var(--ink)}
+  .rule .cond{margin-top:4px;font-size:11px;color:var(--warn)}
+  /* graph */
+  .graph{position:relative;padding:14px 10px}
+  .graph-edges{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
+  .graph-edges path{fill:none;stroke:var(--faint);stroke-width:1.5}
+  .graph-edges path.active{stroke:var(--hl);stroke-width:2.2}
+  .graph-edges text{fill:var(--faint);font:10px var(--sans)}
+  .graph-nodes{position:relative;display:flex;flex-direction:column;gap:26px;align-items:center;z-index:1}
+  .gnode{width:84%;background:var(--panel2);border:1px solid var(--line);border-left:4px solid var(--faint);border-radius:8px;padding:8px 10px;cursor:pointer;transition:transform .08s}
+  .gnode:hover{transform:translateY(-1px);border-color:var(--faint)}
+  .gnode.active{border-color:var(--hl);box-shadow:0 0 0 2px rgba(245,196,81,.25)}
+  .gnode .gtype{font:700 9.5px var(--mono);letter-spacing:.5px;color:var(--dim)}
+  .gnode .gid{font:650 13px var(--sans);margin:1px 0}
+  .gnode .gio{font:11px var(--mono);color:var(--faint)}
+  .type-OBSERVE{border-left-color:#22d3ee}.type-COMPUTE{border-left-color:#8b5cf6}
+  .type-ACT{border-left-color:#3fb950}.type-HIL{border-left-color:#d29922}.type-EXTRACT{border-left-color:#f5c451}
+  /* node detail */
+  .detail{border-top:1px solid var(--line);padding:11px 12px;font-size:12px;flex:0 0 auto;max-height:42%;overflow:auto;background:var(--panel2)}
+  .detail .dnone{color:var(--faint)}
+  .detail h4{margin:0 0 6px;font-size:12px}
+  .detail .kv{display:flex;gap:6px;margin:3px 0;font:11.5px var(--mono)}
+  .detail .kv .k{color:var(--dim);min-width:68px}
+  .detail .carry{background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:0 5px}
+  .detail .trace{color:var(--acc2);cursor:pointer;text-decoration:underline dotted}
+  .detail .dsrc{margin-top:7px;padding:7px 8px;border-left:3px solid var(--hl);background:rgba(245,196,81,.08);font:11.5px/1.5 var(--mono)}
+  /* jac */
+  .jline{display:flex;font:12px/1.55 var(--mono);white-space:pre}
+  .jline .lno{flex:0 0 34px;text-align:right;padding-right:10px;color:var(--faint);user-select:none}
+  .jline code{white-space:pre}
+  .jline[data-node]:not([data-node=""]){cursor:pointer}
+  .jline[data-node]:not([data-node=""]):hover{background:var(--panel2)}
+  .jline.active{background:rgba(245,196,81,.12);box-shadow:inset 3px 0 0 var(--hl)}
+  /* validation */
+  .val{flex:0 0 auto;border-top:1px solid var(--line);background:var(--panel);max-height:30vh;overflow:auto}
+  .val .vh{padding:8px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;position:sticky;top:0;background:var(--panel)}
+  .val .vh .t{font-size:11px;letter-spacing:.6px;text-transform:uppercase;color:var(--dim)}
+  .finding{padding:10px 16px;border-bottom:1px solid var(--line);cursor:pointer;display:flex;gap:10px}
+  .finding:hover{background:var(--panel)}
+  .finding.active{background:rgba(245,196,81,.08)}
+  .sev{flex:0 0 auto;font:700 9.5px var(--mono);padding:2px 7px;border-radius:999px;height:fit-content}
+  .sev.error{background:rgba(248,81,73,.15);color:var(--err)}
+  .sev.warning{background:rgba(210,153,34,.15);color:var(--warn)}
+  .sev.info{background:rgba(63,185,80,.13);color:var(--ok)}
+  .finding .ft{font-weight:650}
+  .finding .gate{font:11px var(--mono);color:var(--acc2);margin-left:6px}
+  .finding .fx{color:var(--dim);margin-top:3px}
+  .finding .flink{color:var(--acc2);font:11px var(--mono)}
+  pre.compile{margin:8px 16px;padding:10px;background:#fff5f5;border:1px solid #f3c9c7;border-radius:6px;color:#b91c1c;font:11.5px/1.5 var(--mono);white-space:pre-wrap;overflow:auto}
+  .hint{padding:10px 16px;color:var(--faint);font-size:11.5px}
+</style>
+</head>
+<body>
+<header>
+  <h1><span class="dot">◆</span> Sigil Pipeline Explorer</h1>
+  <span style="color:var(--faint);font:11px var(--mono)">SKILL.md → requirements → AG-IR → JAC</span>
+  <div class="spacer"></div>
+  <button class="clear" id="clearBtn">clear selection</button>
+  <select id="bundleSel"></select>
+  <label class="file">load bundle.json<input id="fileIn" type="file" accept=".json,application/json" hidden></label>
+  <span id="statusPill" class="pill ok">—</span>
+</header>
+
+<main>
+  <section class="col">
+    <div class="ch"><span class="step">1</span> SKILL.md <span class="arrow">source</span></div>
+    <div class="body"><pre class="src" id="srcEl"></pre></div>
+  </section>
+
+  <section class="col">
+    <div class="ch"><span class="step">2</span> Requirements <span class="arrow">the contract</span></div>
+    <div class="body" id="rulesEl"></div>
+  </section>
+
+  <section class="col">
+    <div class="ch"><span class="step">3</span> AG-IR <span class="arrow">dependency graph</span></div>
+    <div class="body"><div class="graph" id="graphEl">
+      <svg class="graph-edges" id="edgesEl"></svg>
+      <div class="graph-nodes" id="graphNodesEl"></div>
+    </div></div>
+    <div class="detail" id="detailEl"><span class="dnone">Click a node to see its inputs/outputs and the source it traces to.</span></div>
+  </section>
+
+  <section class="col">
+    <div class="ch"><span class="step">4</span> JAC <span class="arrow">lowered code</span></div>
+    <div class="body" id="jacEl"></div>
+  </section>
+</main>
+
+<section class="val" id="valEl">
+  <div class="vh"><span class="t">Validation (AG-IR → JAC)</span><span id="valSummary" style="color:var(--dim);font-size:12px"></span></div>
+  <div id="findingsEl"></div>
+</section>
+
+<script>
+/* ============================================================== *
+ * SYNTHETIC demo data (self-consistent; swap for a real exporter
+ * bundle via "load bundle.json"). Bundle schema:
+ *   { skill_name, skill_md,
+ *     rules:[{id,quote,kind,modality,statement,condition?}],  // quote = VERBATIM span of skill_md
+ *     agir:{ shape, nodes:[{id,type,doc,reads,writes,traces_to}], edges:[{src,dst,guard?}] },
+ *     jac,                                                    // node blocks marked `#@node <id>` ... `#@end`
+ *     validation:{ ok, findings:[{gate,severity,title,explain,node?,rule?,carry?}], compile:{ok,errors} } }
+ * ============================================================== */
+const SKILL_MD = `# Clean CSV
+
+Read the input CSV file named in the task.
+
+Rename each column to a clean snake_case name. Never use leading or trailing underscores.
+
+Write the cleaned table to output.csv with a header row.
+
+If the file has no header row, stop and ask the user before continuing.
+`;
+
+const RULES = [
+  { id: "r1", quote: "Read the input CSV file named in the task.",
+    kind: "STEP", modality: "MANDATORY",
+    statement: "Read the input CSV named in the task." },
+  { id: "r2", quote: "Rename each column to a clean snake_case name.",
+    kind: "STEP", modality: "MANDATORY",
+    statement: "Rename every column to a clean snake_case name." },
+  { id: "r3", quote: "Never use leading or trailing underscores.",
+    kind: "CONSTRAINT", modality: "FORBIDDEN",
+    statement: "A header name must not start or end with an underscore." },
+  { id: "r4", quote: "Write the cleaned table to output.csv with a header row.",
+    kind: "IO", modality: "MANDATORY",
+    statement: "Write the cleaned table to output.csv, with a header row." },
+  { id: "r5", quote: "If the file has no header row, stop and ask the user before continuing.",
+    kind: "HIL", modality: "MANDATORY", condition: "If the file has no header row",
+    statement: "When the input has no header row, stop and ask the user." },
+];
+
+const NODES_OK = [
+  { id: "read_input", type: "OBSERVE",
+    doc: "Read the input CSV file named in the task.",
+    reads: ["task_input_path"], writes: ["rows", "headers", "row_count"],
+    traces_to: ["r1"] },
+  { id: "ask_header", type: "HIL",
+    doc: "If the file has no header row, stop and ask the user.",
+    reads: ["headers"], writes: ["header_ok"],
+    traces_to: ["r5"] },
+  { id: "rename_columns", type: "COMPUTE",
+    doc: "Rename each column to clean snake_case; no leading/trailing underscores.",
+    reads: ["headers"], writes: ["clean_headers"],
+    traces_to: ["r2", "r3"] },
+  { id: "write_output", type: "ACT",
+    doc: "Write the cleaned table to output.csv with a header row.",
+    reads: ["rows", "clean_headers"], writes: ["artifact_path"],
+    traces_to: ["r4"] },
+];
+
+const EDGES = [
+  { src: "read_input", dst: "ask_header", guard: "no header row" },
+  { src: "read_input", dst: "rename_columns" },
+  { src: "ask_header", dst: "rename_columns" },
+  { src: "rename_columns", dst: "write_output" },
+];
+
+const JAC_OK = `#!/usr/bin/env jac
+# clean_csv — lowered by sigil (synthetic demo)
+
+obj Carry {
+    has task_input_path: str = "";
+    has rows: any = [];
+    has headers: list[str] = [];
+    has row_count: int = 0;
+    has header_ok: bool = False;
+    has clean_headers: list[str] = [];
+    has artifact_path: str = "";
+}
+
+walker CleanCsvAgent {
+    has carry: Carry = Carry();
+
+#@node read_input
+    can n_read_input with \`root entry {
+        (self.carry.rows, self.carry.headers, self.carry.row_count)
+            = read_csv(self.carry.task_input_path);
+        visit [-->];
+    }
+
+#@node ask_header
+    can n_ask_header with CleanCsvAgent entry {
+        if not self.carry.headers {
+            self.carry.header_ok = ask_user("The file has no header row — continue?");
+        }
+        visit [-->];
+    }
+
+#@node rename_columns
+    can n_rename_columns with CleanCsvAgent entry {
+        self.carry.clean_headers = snake_case_headers(self.carry.headers)
+            by llm();          # judgment slot: name each column
+        visit [-->];
+    }
+
+#@node write_output
+    can n_write_output with CleanCsvAgent entry {
+        self.carry.artifact_path =
+            write_csv("output.csv", self.carry.clean_headers, self.carry.rows);
+        report self.carry.artifact_path;
+    }
+#@end
+}
+
+def run(task_input_path: str) -> str {
+    w = CleanCsvAgent(carry=Carry(task_input_path=task_input_path));
+    return root spawn w;
+}
+`;
+
+const BUNDLE_PASS = {
+  skill_name: "clean_csv", skill_md: SKILL_MD, rules: RULES,
+  agir: { shape: "pipeline", nodes: NODES_OK, edges: EDGES }, jac: JAC_OK,
+  validation: { ok: true,
+    findings: [ { gate: "G2_STRUCT_COV", severity: "info",
+      title: "Every MANDATORY requirement is realized",
+      explain: "r1, r2, r4 and r5 each appear in some node's traces_to; r3 (FORBIDDEN) correctly folds into rename_columns as a constraint rather than its own node." } ],
+    compile: { ok: true, errors: "" } },
+};
+
+const NODES_FAIL = NODES_OK.map(n => n.id === "write_output" ? { ...n, reads: ["rows", "clean_header"] } : n);
+const JAC_FAIL = JAC_OK.replace(
+  'write_csv("output.csv", self.carry.clean_headers, self.carry.rows)',
+  'write_csv("output.csv", self.carry.clean_header, self.carry.rows)');
+
+const BUNDLE_FAIL = {
+  skill_name: "clean_csv", skill_md: SKILL_MD, rules: RULES,
+  agir: { shape: "pipeline", nodes: NODES_FAIL, edges: EDGES }, jac: JAC_FAIL,
+  validation: { ok: false,
+    findings: [
+      { gate: "G_TYPE_UNIFICATION", severity: "error", node: "write_output", carry: "clean_header", rule: "r4",
+        title: "Reads a carry that nothing produces",
+        explain: "Node `write_output` reads the carry `clean_header`, but no node writes it. The closest produced carry is `clean_headers` (written by `rename_columns`). Almost certainly a typo — align the two names. Until then requirement r4 (write output.csv) cannot actually run." },
+      { gate: "COMPILE", severity: "error", node: "write_output",
+        title: "Lowered module fails `jac check`",
+        explain: "The lowered JAC references `self.carry.clean_header`, which is not a field of `Carry` (the field is `clean_headers`). `jac check` rejects the module, so no runnable skill is produced." },
+    ],
+    compile: { ok: false,
+      errors: "jac check: 1 error\n✖ Error: error[E0012]: name 'clean_header' is not a member of 'Carry'\n   --> clean_csv.jac:46:40\n    |\n 46 |             write_csv(\"output.csv\", self.carry.clean_header, self.carry.rows);\n    |                                        ^^^^^^^^^^^^^ did you mean 'clean_headers'?\nFAILED" } },
+};
+
+window.DEMO_BUNDLES = {
+  "demo: passing": BUNDLE_PASS,
+  "demo: failing (typo'd carry)": BUNDLE_FAIL,
+};
+</script>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>(s??"").replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+let B=null, nodeById={}, ruleById={}, current={rules:new Set(),nodes:new Set(),primaryNode:null};
+
+/* ---------- load ---------- */
+function load(bundle){
+  B=bundle;
+  nodeById={}; ruleById={};
+  (B.agir.nodes||[]).forEach(n=>nodeById[n.id]=n);
+  (B.rules||[]).forEach(r=>ruleById[r.id]=r);
+  renderSource(); renderRules(); renderGraph(); renderJac(); renderValidation();
+  focus([],[]); // clear
+  requestAnimationFrame(drawEdges);
+}
+
+/* ---------- panel 1: source ---------- */
+function renderSource(){
+  const md=B.skill_md||"";
+  const spans=[];
+  for(const r of (B.rules||[])){ const i=md.indexOf(r.quote); if(i>=0) spans.push({s:i,e:i+r.quote.length,rule:r.id}); }
+  spans.sort((a,b)=>a.s-b.s);
+  const kept=[]; let last=-1;
+  for(const sp of spans){ if(sp.s>=last){ kept.push(sp); last=sp.e; } }
+  let html="",pos=0;
+  for(const sp of kept){ html+=esc(md.slice(pos,sp.s)); html+=`<mark class="src" data-rule="${sp.rule}">${esc(md.slice(sp.s,sp.e))}</mark>`; pos=sp.e; }
+  html+=esc(md.slice(pos));
+  $("#srcEl").innerHTML=html;
+}
+
+/* ---------- panel 2: requirements ---------- */
+function renderRules(){
+  $("#rulesEl").innerHTML=(B.rules||[]).map(r=>`
+    <div class="rule" data-rule="${r.id}">
+      <div class="rhead">
+        <span class="rid">${r.id}</span>
+        <span class="chip kind">${r.kind||""}</span>
+        <span class="chip mod-${r.modality}">${r.modality||""}</span>
+      </div>
+      <div class="rquote">${esc(r.quote)}</div>
+      ${r.condition?`<div class="cond">condition: ${esc(r.condition)}</div>`:""}
+    </div>`).join("");
+}
+
+/* ---------- panel 3: graph ---------- */
+function renderGraph(){
+  $("#graphNodesEl").innerHTML=(B.agir.nodes||[]).map(n=>`
+    <div class="gnode type-${n.type}" data-node="${n.id}">
+      <div class="gtype">${n.type}</div>
+      <div class="gid">${n.id}</div>
+      <div class="gio">${(n.reads||[]).length} in · ${(n.writes||[]).length} out</div>
+    </div>`).join("");
+}
+function drawEdges(){
+  const svg=$("#edgesEl"), graph=$("#graphEl"); if(!svg||!graph) return;
+  const gr=graph.getBoundingClientRect();
+  svg.setAttribute("viewBox",`0 0 ${gr.width} ${gr.height}`);
+  const box=id=>{ const el=graph.querySelector(`.gnode[data-node="${CSS.escape(id)}"]`); if(!el) return null;
+    const r=el.getBoundingClientRect(); return {x:r.left-gr.left+r.width/2, top:r.top-gr.top, bot:r.bottom-gr.top, w:r.width}; };
+  let defs=`<defs><marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+    <path d="M0,0 L6,3 L0,6 Z" fill="var(--faint)"/></marker>
+    <marker id="arrA" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+    <path d="M0,0 L6,3 L0,6 Z" fill="var(--hl)"/></marker></defs>`;
+  let paths="";
+  for(const e of (B.agir.edges||[])){
+    const a=box(e.src), b=box(e.dst); if(!a||!b) continue;
+    const x1=a.x,y1=a.bot+2,x2=b.x,y2=b.top-6;
+    const my=(y1+y2)/2;
+    const d=`M${x1},${y1} C${x1},${my} ${x2},${my} ${x2},${y2}`;
+    paths+=`<path data-src="${e.src}" data-dst="${e.dst}" d="${d}" marker-end="url(#arr)"></path>`;
+    if(e.guard){ const mx=(x1+x2)/2, mmy=my; paths+=`<text x="${mx+6}" y="${mmy}">${esc(e.guard)}</text>`; }
+  }
+  svg.innerHTML=defs+paths;
+  highlightEdges();
+}
+function highlightEdges(){
+  $("#edgesEl").querySelectorAll("path[data-src]").forEach(p=>{
+    const on=current.nodes.has(p.dataset.src)&&current.nodes.has(p.dataset.dst);
+    p.classList.toggle("active",on);
+    p.setAttribute("marker-end", on?"url(#arrA)":"url(#arr)");
+  });
+}
+
+/* ---------- panel 4: jac ---------- */
+function renderJac(){
+  const raw=(B.jac||"").split("\n"); const out=[]; let cur=null,ln=0;
+  for(const line of raw){
+    const m=line.match(/^#@node\s+(\S+)/); if(m){ cur=m[1]; continue; }
+    if(/^#@end/.test(line)){ cur=null; continue; }
+    ln++; out.push({n:ln,node:cur,text:line});
+  }
+  $("#jacEl").innerHTML=out.map(o=>
+    `<div class="jline" data-node="${o.node||""}"><span class="lno">${o.n}</span><code>${esc(o.text)||" "}</code></div>`
+  ).join("");
+}
+
+/* ---------- validation ---------- */
+function renderValidation(){
+  const v=B.validation||{ok:true,findings:[],compile:{ok:true,errors:""}};
+  const pill=$("#statusPill");
+  pill.className="pill "+(v.ok?"ok":"err");
+  pill.textContent=v.ok?"VALIDATION PASSED":"VALIDATION FAILED";
+  $("#valSummary").textContent=v.ok
+    ? "the lowered module type-checks and every mandatory requirement is realized"
+    : "click a finding to highlight the node, its JAC lines, and the requirement it breaks";
+  let html=(v.findings||[]).map((f,i)=>`
+    <div class="finding" data-i="${i}" ${f.rule?`data-rule="${f.rule}"`:""} ${f.node?`data-node="${f.node}"`:""}>
+      <span class="sev ${f.severity}">${(f.severity||"").toUpperCase()}</span>
+      <div>
+        <div><span class="ft">${esc(f.title)}</span><span class="gate">${esc(f.gate)}</span></div>
+        <div class="fx">${esc(f.explain)}</div>
+        <div class="flink">${f.node?`node ${esc(f.node)}`:""}${f.node&&f.rule?" · ":""}${f.rule?`requirement ${esc(f.rule)}`:""}${f.carry?` · carry ${esc(f.carry)}`:""}</div>
+      </div>
+    </div>`).join("");
+  if(v.compile && v.compile.ok===false && v.compile.errors){
+    html+=`<pre class="compile">${esc(v.compile.errors)}</pre>`;
+  }
+  if(!html) html=`<div class="hint">No findings.</div>`;
+  $("#findingsEl").innerHTML=html;
+}
+
+/* ---------- selection / cross-highlight ---------- */
+function focus(seedRules=[],seedNodes=[]){
+  const rules=new Set(seedRules), nodes=new Set(seedNodes);
+  for(const n of (B.agir.nodes||[])) if((n.traces_to||[]).some(r=>rules.has(r))) nodes.add(n.id);
+  for(const id of seedNodes){ const n=nodeById[id]; if(n)(n.traces_to||[]).forEach(r=>rules.add(r)); }
+  current={rules,nodes,primaryNode:seedNodes[0]||[...nodes][0]||null,primaryRule:seedRules[0]||null};
+  applyHL();
+}
+function applyHL(){
+  document.querySelectorAll("[data-rule]").forEach(el=>el.classList.toggle("active",current.rules.has(el.dataset.rule)));
+  document.querySelectorAll(".gnode[data-node]").forEach(el=>el.classList.toggle("active",current.nodes.has(el.dataset.node)));
+  document.querySelectorAll(".jline").forEach(el=>el.classList.toggle("active",el.dataset.node&&current.nodes.has(el.dataset.node)));
+  document.querySelectorAll(".finding").forEach(el=>{
+    const on=(el.dataset.rule&&current.rules.has(el.dataset.rule))||(el.dataset.node&&current.nodes.has(el.dataset.node));
+    el.classList.toggle("active",!!on);
+  });
+  highlightEdges(); renderDetail();
+}
+function renderDetail(){
+  const el=$("#detailEl"); const n=current.primaryNode?nodeById[current.primaryNode]:null;
+  if(!n){ el.innerHTML=`<span class="dnone">Click a node (or a requirement / JAC line) to see its inputs, outputs, and the source it traces to.</span>`; return; }
+  const carry=a=>(a||[]).map(c=>`<span class="carry">${esc(c)}</span>`).join(" ")||"<span class='dnone'>—</span>";
+  const traces=(n.traces_to||[]).map(rid=>`<span class="trace" data-rule="${rid}">${rid}</span>`).join(" ");
+  const srcBlocks=(n.traces_to||[]).map(rid=>{const r=ruleById[rid]; return r?`<div class="dsrc">“${esc(r.quote)}” <span style="color:var(--faint)">— ${rid} (${r.kind}/${r.modality})</span></div>`:"";}).join("");
+  el.innerHTML=`
+    <h4>${esc(n.id)} <span class="chip">${esc(n.type)}</span></h4>
+    <div style="color:var(--dim);margin-bottom:6px">${esc(n.doc||"")}</div>
+    <div class="kv"><span class="k">reads</span><span>${carry(n.reads)}</span></div>
+    <div class="kv"><span class="k">writes</span><span>${carry(n.writes)}</span></div>
+    <div class="kv"><span class="k">traces&nbsp;to</span><span>${traces||"<span class='dnone'>—</span>"}</span></div>
+    <div style="margin-top:6px;color:var(--dim);font-size:11px">corresponding SKILL.md:</div>
+    ${srcBlocks}`;
+}
+
+/* ---------- events ---------- */
+$("#srcEl").addEventListener("click",e=>{const m=e.target.closest("[data-rule]");if(m)focus([m.dataset.rule],[]);});
+$("#rulesEl").addEventListener("click",e=>{const m=e.target.closest("[data-rule]");if(m)focus([m.dataset.rule],[]);});
+$("#graphNodesEl").addEventListener("click",e=>{const m=e.target.closest(".gnode");if(m)focus([],[m.dataset.node]);});
+$("#jacEl").addEventListener("click",e=>{const m=e.target.closest(".jline");if(m&&m.dataset.node)focus([],[m.dataset.node]);});
+$("#findingsEl").addEventListener("click",e=>{const m=e.target.closest(".finding");if(!m)return;focus(m.dataset.rule?[m.dataset.rule]:[],m.dataset.node?[m.dataset.node]:[]);});
+$("#detailEl").addEventListener("click",e=>{const m=e.target.closest(".trace");if(m)focus([m.dataset.rule],[]);});
+$("#clearBtn").addEventListener("click",()=>focus([],[]));
+window.addEventListener("resize",()=>requestAnimationFrame(drawEdges));
+
+/* bundle picker */
+const sel=$("#bundleSel");
+Object.keys(window.DEMO_BUNDLES).forEach(k=>{const o=document.createElement("option");o.value=k;o.textContent=k;sel.appendChild(o);});
+sel.addEventListener("change",()=>load(window.DEMO_BUNDLES[sel.value]));
+$("#fileIn").addEventListener("change",ev=>{
+  const f=ev.target.files[0]; if(!f)return;
+  const rd=new FileReader(); rd.onload=()=>{try{load(JSON.parse(rd.result));sel.selectedIndex=-1;}catch(err){alert("Invalid bundle.json: "+err.message);}}; rd.readAsText(f);
+});
+
+/* go */
+load(window.DEMO_BUNDLES[Object.keys(window.DEMO_BUNDLES)[0]]);
+</script>
+</body>
+</html>
