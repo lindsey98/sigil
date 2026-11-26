@@ -1,9 +1,11 @@
 """export_bundle.jac — compile ONE real skill and emit the visualizer bundle.
 
-    jac run src/export_bundle.jac -- <SKILL.md> [out.json]
+    jac run src/export_bundle.jac -- <SKILL.md> [out.json | out.html]
 
-Runs the full pipeline on a specific skill and writes a bundle.json that
-tools/pipeline-explorer/index.html loads via "load bundle.json":
+Runs the full pipeline on a specific skill and writes the visualizer data. With
+an .html out name it inlines the data into the explorer template and writes ONE
+self-contained page (scp it back and just open it); otherwise it writes a
+bundle.json that tools/pipeline-explorer/index.html loads via "load bundle.json":
 
     SKILL.md --extract_spec--> rules (contract, with verbatim quotes)
              --lift----------> AG-IR (ir_text) + lowered JAC + validation findings
@@ -35,7 +37,7 @@ with entry {
     argv = [a for a in sys.argv];
     args = argv[argv.index("--") + 1:] if "--" in argv else argv[1:];
     if not args {
-        print("usage: jac run src/export_bundle.jac -- <SKILL.md> [out.json]");
+        print("usage: jac run src/export_bundle.jac -- <SKILL.md> [out.json | out.html]");
     } else {
         skill_path = args[0];
         out_path = args[1] if len(args) > 1 else "bundle.json";
@@ -88,7 +90,17 @@ with entry {
         };
 
         print("[4/4] writing " + out_path + " …");
-        with open(out_path, "w") as f { json.dump(bundle, f, indent=2); }
-        print("done. open tools/pipeline-explorer/index.html and load " + out_path);
+        if out_path.endswith(".html") {
+            # self-contained page: inline the bundle into the explorer template at
+            # its <!-- EMBED --> marker, so the one file opens with the data baked in.
+            tpl_path = os.path.join("tools", "pipeline-explorer", "index.html");
+            with open(tpl_path) as f { tpl = f.read(); }
+            embed = "<script>window.__EMBEDDED_BUNDLE__ = " + json.dumps(bundle) + ";</script>";
+            with open(out_path, "w") as f { f.write(tpl.replace("<!-- EMBED -->", embed, 1)); }
+            print("done. self-contained page -> " + out_path + "  (scp it back and just open it)");
+        } else {
+            with open(out_path, "w") as f { json.dump(bundle, f, indent=2); }
+            print("done. open tools/pipeline-explorer/index.html and load " + out_path);
+        }
     }
 }

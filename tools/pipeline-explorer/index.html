@@ -143,6 +143,7 @@
   <div id="findingsEl"></div>
 </section>
 
+<!-- EMBED -->
 <script>
 /* ============================================================== *
  * SYNTHETIC demo data (self-consistent; swap for a real exporter
@@ -462,6 +463,12 @@ $("#clearBtn").addEventListener("click",()=>focus([],[]));
 window.addEventListener("resize",()=>requestAnimationFrame(drawEdges));
 
 /* bundle picker */
+/* a real exporter can inline its data at <!-- EMBED --> as
+   window.__EMBEDDED_BUNDLE__; make it the first (default) entry. */
+if(window.__EMBEDDED_BUNDLE__){
+  const _nm=(window.__EMBEDDED_BUNDLE__.skill_name||"bundle")+" (exported)";
+  window.DEMO_BUNDLES=Object.assign({[_nm]:window.__EMBEDDED_BUNDLE__}, window.DEMO_BUNDLES);
+}
 const sel=$("#bundleSel");
 Object.keys(window.DEMO_BUNDLES).forEach(k=>{const o=document.createElement("option");o.value=k;o.textContent=k;sel.appendChild(o);});
 sel.addEventListener("change",()=>load(window.DEMO_BUNDLES[sel.value]));
