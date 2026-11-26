@@ -34,8 +34,13 @@ def _name_of(path: str) -> str {
 }
 
 with entry {
-    argv = [a for a in sys.argv];
-    args = argv[argv.index("--") + 1:] if "--" in argv else argv[1:];
+    # jac's sys.argv is [prog, "run", "<script>", <user args...>] and it strips the
+    # "--" separator, so find our own script and take everything after it.
+    av = [str(a) for a in sys.argv];
+    _s = 1;
+    for _i in range(len(av)) { if av[_i].endswith("export_bundle.jac") { _s = _i + 1; break; } }
+    args = av[_s:];
+    if args and args[0] == "--" { args = args[1:]; }
     if not args {
         print("usage: jac run src/export_bundle.jac -- <SKILL.md> [out.json | out.html]");
     } else {

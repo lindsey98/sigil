@@ -73,8 +73,13 @@ def _sum_tokens(obs_path: str) -> dict[str, any] {
 }
 
 with entry {
-    argv = [a for a in sys.argv];
-    rest = argv[argv.index("--") + 1:] if "--" in argv else argv[1:];
+    # jac's sys.argv is [prog, "run", "<script>", <user args...>] and it strips the
+    # "--" separator, so find our own script and take everything after it.
+    av = [str(a) for a in sys.argv];
+    _s = 1;
+    for _i in range(len(av)) { if av[_i].endswith("eval_metrics.jac") { _s = _i + 1; break; } }
+    rest = av[_s:];
+    if rest and rest[0] == "--" { rest = rest[1:]; }
     if len(rest) < 2 {
         print("usage: jac run src/eval_metrics.jac -- <SKILL.md> \"<task>\" [out.json]");
     } else {
