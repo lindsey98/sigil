@@ -30,7 +30,7 @@ import os;
 import sys;
 import json;
 import tempfile;
-import from src.compiler.ai.lift { lift }
+import from src.compiler.ai.lift { lift, pin_all_lift_llms }
 import from src.compiler.ai.spec_loop { extract_spec }
 import from src.sigil_runtime { execute_module, OBS_LOG }
 import from jaclang.byllm.lib { Model }
@@ -89,6 +89,10 @@ with entry {
         name = _name_of(skill_path);
         with open(skill_path) as f { skill = f.read(); }
 
+        # $SIGIL_MODEL (if set) is the model NAME used for the compile too, not
+        # just the run below — set it to one your relay serves.
+        _cm = os.getenv("SIGIL_MODEL", "");
+        if _cm { pin_all_lift_llms(Model(model_name=_cm)); }
         print("[1/4] compiling " + name + " (LIFT, model) …");
         lr = lift(skill, name);
         if not lr.ok {

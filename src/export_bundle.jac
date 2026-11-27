@@ -24,8 +24,9 @@ import sys;
 import json;
 import from src.sigil_agir_yaml { load_agir }
 import from src.compiler.ai.spec_loop { extract_spec }
-import from src.compiler.ai.lift { lift }
+import from src.compiler.ai.lift { lift, pin_all_lift_llms }
 import from src.compiler.ai.gates { compile_gate }
+import from jaclang.byllm.lib { Model }
 
 def _name_of(path: str) -> str {
     base = os.path.basename(path);
@@ -48,6 +49,12 @@ with entry {
         out_path = args[1] if len(args) > 1 else "bundle.json";
         name = _name_of(skill_path);
         with open(skill_path) as f { skill = f.read(); }
+
+        # pick the compile model: $SIGIL_MODEL overrides the built-in default
+        # (gpt-4o-mini). With a relay set via $OPENAI_API_BASE, this is the model
+        # NAME sent there, so set it to one your relay serves (e.g. openai/gpt-4o-mini).
+        _m = os.getenv("SIGIL_MODEL", "");
+        if _m { pin_all_lift_llms(Model(model_name=_m)); print("model: " + _m); }
 
         print("[1/4] extracting the contract (spec loop, model) …");
         sr = extract_spec(skill, name);
