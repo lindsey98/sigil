@@ -29,7 +29,10 @@
   button.clear{background:transparent;border:1px solid var(--line);color:var(--dim);border-radius:6px;padding:5px 9px;cursor:pointer;font:12px var(--sans)}
   button.clear:hover{color:var(--ink);border-color:var(--faint)}
   /* layout */
-  main{flex:1;display:grid;grid-template-columns:repeat(4,minmax(220px,1fr));gap:1px;background:var(--line);min-height:0;overflow:hidden}
+  main{flex:1;display:grid;grid-template-columns:repeat(4,minmax(220px,1fr));gap:1px;background:var(--line);min-height:0;overflow:hidden;position:relative}
+  .ribbons{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:6;overflow:visible}
+  .ribbons path{fill:none;stroke:var(--hl);stroke-width:2.5;opacity:.55;stroke-linecap:round}
+  .ribbons circle{fill:var(--hl);opacity:.7}
   .col{background:var(--panel);display:flex;flex-direction:column;min-height:0}
   .col > .ch{padding:8px 12px;border-bottom:1px solid var(--line);font-size:11px;letter-spacing:.6px;text-transform:uppercase;color:var(--dim);display:flex;align-items:center;gap:8px;flex:0 0 auto}
   .col > .ch .step{background:var(--acc);color:#fff;border-radius:4px;padding:0 6px;font-size:10px;font-weight:700}
@@ -148,6 +151,7 @@
     <div class="ch"><span class="step">4</span> JAC</div>
     <div class="body" id="jacEl"></div>
   </section>
+  <svg class="ribbons" id="ribbons"></svg>
 </main>
 
 <section class="val" id="valEl">
@@ -490,7 +494,31 @@ function applyHL(){
     const on=(el.dataset.rule&&current.rules.has(el.dataset.rule))||(el.dataset.node&&current.nodes.has(el.dataset.node));
     el.classList.toggle("active",!!on);
   });
-  highlightEdges(); renderDetail(); scrollActive();
+  highlightEdges(); renderDetail(); scrollActive(); drawRibbons();
+}
+/* ---- waterfall ribbons: curves linking the highlighted bit across panels ---- */
+function _ribInfo(colSel, elSel){
+  const col=$(colSel); if(!col) return null;
+  const el=col.querySelector(elSel); if(!el) return null;
+  const body=col.closest(".body") || col;            // the scrollable viewport
+  const br=body.getBoundingClientRect(), er=el.getBoundingClientRect();
+  const y=Math.min(Math.max(er.top+er.height/2, br.top+8), br.bottom-8);
+  return {right:er.right, left:er.left, y};
+}
+function drawRibbons(){
+  const svg=$("#ribbons"), main=document.querySelector("main"); if(!svg||!main) return;
+  const mr=main.getBoundingClientRect();
+  svg.setAttribute("viewBox", `0 0 ${mr.width} ${mr.height}`);
+  const C=[ _ribInfo("#srcEl","mark.src.active"), _ribInfo("#rulesEl",".rule.active"),
+            _ribInfo("#graphNodesEl",".gnode.active"), _ribInfo("#jacEl",".jline.active") ];
+  let s="";
+  for(let i=0;i<3;i++){
+    const a=C[i], b=C[i+1]; if(!a||!b) continue;
+    const x1=a.right-mr.left, y1=a.y-mr.top, x2=b.left-mr.left, y2=b.y-mr.top, mx=(x1+x2)/2;
+    s+=`<path d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}"/>`
+      +`<circle cx="${x1}" cy="${y1}" r="3"/><circle cx="${x2}" cy="${y2}" r="3"/>`;
+  }
+  svg.innerHTML=s;
 }
 /* auto-scroll each panel so its highlighted bit is centered — no manual scrolling */
 function centerIn(container, el){
@@ -533,7 +561,8 @@ $("#gatesEl").addEventListener("click",e=>{const r=e.target.closest(".grow");if(
   const first=document.querySelector(".finding.active"); if(first) first.scrollIntoView({block:"nearest"});
 });
 $("#clearBtn").addEventListener("click",()=>focus([],[]));
-window.addEventListener("resize",()=>requestAnimationFrame(drawEdges));
+window.addEventListener("resize",()=>requestAnimationFrame(()=>{drawEdges();drawRibbons();}));
+document.querySelectorAll("main .body").forEach(b=>b.addEventListener("scroll",()=>requestAnimationFrame(drawRibbons)));
 
 /* bundle picker */
 /* a real exporter can inline its data at <!-- EMBED --> as
