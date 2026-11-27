@@ -145,13 +145,6 @@ skips the web-UI packages, which the command-line tools below do not need:
 jac install --no-npm
 ```
 
-Why not `pip install`? There is no `pip install sigil` (and `pip install jaclang`
-is the wrong, older project). `jac install` is jac's own package manager: it installs
-into the project's **private `.jac/venv`** — **not** your conda or system Python —
-because that venv is what the jac runtime imports from. (So installing a package into
-a conda env does nothing for jac; the manual equivalent is `.jac/venv/bin/pip install …`.)
-Behind a firewall, point it at a mirror first: `export UV_INDEX_URL=<your-mirror>/simple`.
-
 **Step 3 — connect a model (only if a tool below says it needs one).** Some tools
 call an LLM and some don't — each one says so. For the ones that do, put your API
 key (and a relay/proxy base URL, if you use one) in a `.env` file at the repo root:
