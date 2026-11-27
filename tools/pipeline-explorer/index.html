@@ -490,7 +490,19 @@ function applyHL(){
     const on=(el.dataset.rule&&current.rules.has(el.dataset.rule))||(el.dataset.node&&current.nodes.has(el.dataset.node));
     el.classList.toggle("active",!!on);
   });
-  highlightEdges(); renderDetail();
+  highlightEdges(); renderDetail(); scrollActive();
+}
+/* auto-scroll each panel so its highlighted bit is centered — no manual scrolling */
+function centerIn(container, el){
+  if(!container||!el) return;
+  const cr=container.getBoundingClientRect(), er=el.getBoundingClientRect();
+  container.scrollTo({top: container.scrollTop + (er.top-cr.top) - cr.height/2 + er.height/2, behavior:"smooth"});
+}
+function scrollActive(){
+  const sb=$("#srcEl") && $("#srcEl").parentElement;
+  centerIn(sb, sb && sb.querySelector("mark.src.active"));
+  centerIn($("#rulesEl"), $("#rulesEl").querySelector(".rule.active"));
+  centerIn($("#jacEl"), $("#jacEl").querySelector(".jline.active"));
 }
 function renderDetail(){
   const el=$("#detailEl"); const n=current.primaryNode?nodeById[current.primaryNode]:null;
